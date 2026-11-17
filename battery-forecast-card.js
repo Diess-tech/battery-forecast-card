@@ -5,7 +5,7 @@
  * https://github.com/Diess-tech/battery-forecast-card
  * MIT License - (c) 2026 Davide Sanna
  */
-const BFC_VERSION = "0.4.1";
+const BFC_VERSION = "0.4.2";
 const BFC_STORE_KEY = "battery-forecast-card";
 
 const BFC_I18N = {
@@ -458,16 +458,16 @@ class BatteryForecastCard extends HTMLElement {
         : `mdi:battery-${Math.min(90, Math.max(10, Math.round(r.level / 10) * 10))}`.replace("battery-100", "battery");
       const dayCol = r.status === "green" || r.status === "grey" ? "var(--primary-text-color)" : col;
       const sub = r.level == null
-        ? `<span class="tdays">${bfcEsc(r.label)}</span>`
-        : `<span class="tlvl">${Math.round(r.level)}%</span><span class="tdays" style="color:${dayCol}">${bfcEsc(r.label)}</span>`;
+        ? `<div class="tdays">${bfcEsc(r.label)}</div>`
+        : `<div class="tdays" style="color:${dayCol}">${bfcEsc(r.label)}</div>` +
+          `<div class="tmeta"><span>${Math.round(r.level)}%</span>${!edit && r.type ? `<span class="type">${bfcEsc(r.type)}</span>` : ""}</div>`;
       return `
         <div class="tile st-${r.status} ${r.hidden ? "dim" : ""}" ${edit ? "" : `data-entity="${bfcEsc(r.id)}"`}>
           <ha-icon icon="${r.level != null && r.level >= 95 ? "mdi:battery" : icon}" style="color:${col}"></ha-icon>
           <div class="tinfo">
             <div class="tname">${bfcEsc(r.name)}</div>
-            <div class="tsub">${sub}</div>
+            ${sub}
           </div>
-          ${!edit && r.type ? `<span class="type">${bfcEsc(r.type)}</span>` : ""}
           ${edit ? `<button class="iconbtn eye" data-action="${r.hidden ? "restore" : "hide"}" data-id="${bfcEsc(r.id)}" title="${bfcEsc(r.hidden ? T.restore : T.hide)}" aria-label="${bfcEsc(r.hidden ? T.restore : T.hide)}"><ha-icon icon="${r.hidden ? "mdi:eye-outline" : "mdi:eye-off-outline"}"></ha-icon></button>` : ""}
         </div>`;
     };
@@ -502,7 +502,7 @@ class BatteryForecastCard extends HTMLElement {
       ? `<div class="hidtitle">${bfcEsc(T.hidden(hiddenRows.length))}</div><div class="tiles">${hiddenRows.map(rowHtml).join("")}</div>` : "";
     const pencil = `<button class="iconbtn pencil ${edit ? "on" : ""}" data-action="edit" title="${bfcEsc(edit ? T.done : T.edit)}" aria-label="${bfcEsc(edit ? T.done : T.edit)}"><ha-icon icon="${edit ? "mdi:check" : "mdi:pencil"}"></ha-icon></button>`;
 
-    const more = !edit && list.length > limit
+    const more = !edit && mode === "none" && list.length > limit
       ? `<button class="more" data-action="toggle">${bfcEsc(this._expanded ? T.show_less : T.show_more(list.length - limit))}</button>` : "";
 
     this.shadowRoot.innerHTML = `
@@ -546,7 +546,7 @@ BatteryForecastCard.styles = `
   .chip { border: none; border-radius: 999px; padding: 6px 14px; font: inherit; font-size: 0.85rem; font-weight: 600; cursor: pointer;
     background: rgba(127,127,127,0.14); color: var(--secondary-text-color); }
   .chip.on { background: rgba(102,187,106,0.22); color: var(--primary-text-color); box-shadow: inset 0 0 0 1px rgba(102,187,106,0.6); }
-  .groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; align-items: start; }
+  .groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; align-items: start; }
   .ghead { display: flex; align-items: center; gap: 10px; padding: 10px 14px; margin-bottom: 8px; border-radius: 16px;
     background: rgba(127,127,127,0.12); border: 1px solid rgba(127,127,127,0.2); }
   .ghead ha-icon { --mdc-icon-size: 22px; color: #66bb6a; }
@@ -554,7 +554,7 @@ BatteryForecastCard.styles = `
   .gline { flex: 1; height: 4px; border-radius: 2px; background: linear-gradient(90deg, rgba(102,187,106,0.55), transparent); }
   .gdue { font-size: 0.72rem; font-weight: 700; padding: 1px 8px; border-radius: 999px; white-space: nowrap; background: rgba(239,83,80,0.18); color: #ef5350; }
   .gcount { font-size: 0.8rem; color: var(--secondary-text-color); }
-  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; }
   .tile { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 10px 12px; border-radius: 14px; cursor: pointer;
     background: rgba(127,127,127,0.10); border: 1px solid rgba(127,127,127,0.18); }
   .tile:hover { background: rgba(127,127,127,0.18); }
@@ -562,10 +562,10 @@ BatteryForecastCard.styles = `
   .tile.st-orange { border-color: rgba(255,167,38,0.45); }
   .tile > ha-icon { --mdc-icon-size: 26px; flex: none; }
   .tinfo { flex: 1; min-width: 0; }
-  .tname { font-weight: 600; color: var(--primary-text-color); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word; }
-  .tsub { font-size: 0.8rem; color: var(--secondary-text-color); }
-  .tdays { font-weight: 700; }
-  .tlvl + .tdays::before { content: "·"; margin: 0 5px; font-weight: 400; color: var(--secondary-text-color); }
+  .tname { font-weight: 600; color: var(--primary-text-color); line-height: 1.25; overflow: hidden; overflow-wrap: break-word;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .tdays { font-weight: 700; font-size: 0.88rem; line-height: 1.3; }
+  .tmeta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 2px; font-size: 0.78rem; color: var(--secondary-text-color); }
   .type { flex: none; font-size: 0.68rem; font-weight: 700; padding: 1px 7px; border-radius: 999px;
     background: rgba(127,127,127,0.18); color: var(--secondary-text-color); }
   .more { width: 100%; margin-top: 8px; border: none; border-radius: 12px; padding: 9px; font: inherit; font-weight: 600;
