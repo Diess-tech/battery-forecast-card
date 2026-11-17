@@ -22,6 +22,7 @@ A Home Assistant dashboard card that answers one question: **which battery do I 
 - Shows the **battery type** (AAA, CR2032…) when Home Assistant knows it, for example from [Battery Notes](https://github.com/andrew-codechimp/HA-Battery-Notes) or from Matter devices.
 - Colours: **red** = replace within 30 days (or below 20%), **orange** = within 60 days, **green** = fine.
 - Tap a row to open the sensor's details.
+- **Hide a sensor with one tap:** press the pencil in the header, then the eye on the rows you don't want (a robot vacuum, a toothbrush…). They are listed under *Hidden*, where you can bring them back. The list is saved in Home Assistant for your user, so it works on every device.
 - No dependencies, no helpers or template sensors to create.
 
 ## Installation
@@ -48,7 +49,7 @@ The simplest version is one line:
 type: custom:battery-forecast-card
 ```
 
-Most homes will want to leave out a few rechargeable devices, like a robot vacuum or an electric car:
+Most homes will want to leave out a few rechargeable devices, like a robot vacuum or an electric car. The easiest way is the pencil button on the card itself. To do it in the YAML instead:
 
 ```yaml
 type: custom:battery-forecast-card

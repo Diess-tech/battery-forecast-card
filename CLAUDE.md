@@ -5,6 +5,7 @@
 - Data: `recorder/statistics_during_period` (period day, type mean) over `days_history` (60), reloaded every 6 h or when the entity list changes.
 - Estimate in `bfcEstimate` (also `BatteryForecastCard.estimate`): replacement = jump >= 10 points AND above the max of the previous 7 days (ignores bouncing readings, e.g. door locks); needs >= 7 days after replacement; least-squares slope on the last `days_window` (30) days; days left = (level − threshold) / rate.
 - Battery type: `battery_type` attribute, or a sibling entity of the same device whose id contains battery_type / tipo_batteria / battery_notes (cached 10 min).
+- Pencil in the header = edit mode: eye buttons hide/restore sensors. The hidden list is saved with `frontend/set_user_data` (key `battery-forecast-card`, per HA user), fallback to localStorage; it is combined with `exclude`. Hidden sensors still get their statistics loaded so restoring is instant.
 - UI strings in `BFC_I18N` (en, it). Keep `hacs.json` filename in sync; bump `BFC_VERSION` and make a GitHub release for every version.
 - The author (Davide) is Italian and a hobbyist: explain things to him in simple Italian.
 - In Davide's HA the same logic existed as a template in automation.riassunto_settimanale_aggiorna_dati (writes input_text.riassunto_batterie_da_cambiare every Monday). His rechargeables to exclude: sensor.ambrogio_*, sensor.spazzolino_*, sensor.cortile_harley_*; PetKit food/fountain report 0%.
