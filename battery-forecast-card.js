@@ -5,7 +5,7 @@
  * https://github.com/Diess-tech/battery-forecast-card
  * MIT License - (c) 2026 Davide Sanna
  */
-const BFC_VERSION = "0.2.0";
+const BFC_VERSION = "0.3.0";
 const BFC_STORE_KEY = "battery-forecast-card";
 
 const BFC_I18N = {
@@ -31,6 +31,12 @@ const BFC_I18N = {
     restore: "Show this sensor again",
     hidden: (n) => `Hidden (${n})`,
     edit_hint: "Tap the eye to hide a sensor, for example a rechargeable device.",
+    g_none: "All",
+    g_area: "By area",
+    g_type: "By type",
+    no_area: "No area",
+    to_replace: (n) => `${n} to replace`,
+    kinds: { sensors: "Home sensors", thermo: "Thermometers & valves", remotes: "Remotes", devices: "Devices" },
   },
   it: {
     title: "Batterie",
@@ -54,8 +60,17 @@ const BFC_I18N = {
     restore: "Mostra di nuovo questo sensore",
     hidden: (n) => `Nascosti (${n})`,
     edit_hint: "Tocca l'occhio per nascondere un sensore, per esempio un dispositivo ricaricabile.",
+    g_none: "Tutte",
+    g_area: "Per area",
+    g_type: "Per tipo",
+    no_area: "Senza area",
+    to_replace: (n) => `${n} da cambiare`,
+    kinds: { sensors: "Sensori di casa", thermo: "Termometri e valvole", remotes: "Telecomandi", devices: "Dispositivi" },
   },
 };
+
+const BFC_KIND_ICONS = { sensors: "mdi:motion-sensor", thermo: "mdi:thermometer", remotes: "mdi:remote", devices: "mdi:devices" };
+const BFC_KIND_ORDER = ["sensors", "thermo", "remotes", "devices"];
 
 const BFC_NAME_SUFFIX = /[\s_-]*(battery level|battery|livello batteria|batteria|batterie|niveau de batterie|batterie|akku|bateria)\s*$/i;
 
@@ -113,6 +128,7 @@ class BatteryForecastCard extends HTMLElement {
     this._loading = false;
     this._expanded = false;
     this._editing = false;
+    this._group = null;       // "none" | "area" | "type" (the user's choice, saved with the hidden list)
     this._hidden = [];        // sensors hidden from the card (saved in the HA user's data)
     this._hiddenLoaded = false;
     this._sig = null;
@@ -130,6 +146,7 @@ class BatteryForecastCard extends HTMLElement {
       days_history: 60,
       exclude_platforms: ["mobile_app", "browser_mod"],
       exclude: [],
+      group_by: "none",        // none | area | type
       show_unavailable: true,
       show_type: true,
       limit: 10,
@@ -146,31 +163,35 @@ class BatteryForecastCard extends HTMLElement {
     this._update();
   }
 
-  // ---------- hidden sensors (stored in Home Assistant, per user) ----------
+  // ---------- preferences (hidden sensors, grouping): stored in Home Assistant, per user ----------
   async _loadHidden() {
-    let list = null;
+    let v = null;
     try {
       const res = await this._hass.callWS({ type: "frontend/get_user_data", key: BFC_STORE_KEY });
-      if (res && res.value && Array.isArray(res.value.hidden)) list = res.value.hidden;
+      if (res && res.value) v = res.value;
     } catch (e) {
-      try { list = JSON.parse(localStorage.getItem(BFC_STORE_KEY) || "null"); } catch (e2) { /* ignore */ }
+      try { v = JSON.parse(localStorage.getItem(BFC_STORE_KEY) || "null"); } catch (e2) { /* ignore */ }
     }
-    this._hidden = Array.isArray(list) ? list : [];
+    if (Array.isArray(v)) v = { hidden: v };
+    this._hidden = v && Array.isArray(v.hidden) ? v.hidden : [];
+    if (v && ["none", "area", "type"].includes(v.group)) this._group = v.group;
     this._hiddenLoaded = true;
     this._sig = null;
     this._update();
   }
 
-  async _saveHidden(list) {
-    this._hidden = list;
+  async _persist() {
     this._sig = null;
     this._update();
+    const value = { hidden: this._hidden, group: this._group || undefined };
     try {
-      await this._hass.callWS({ type: "frontend/set_user_data", key: BFC_STORE_KEY, value: { hidden: list } });
+      await this._hass.callWS({ type: "frontend/set_user_data", key: BFC_STORE_KEY, value });
     } catch (e) {
-      try { localStorage.setItem(BFC_STORE_KEY, JSON.stringify(list)); } catch (e2) { /* ignore */ }
+      try { localStorage.setItem(BFC_STORE_KEY, JSON.stringify(value)); } catch (e2) { /* ignore */ }
     }
   }
+
+  get _groupBy() { return this._group || this._config.group_by || "none"; }
 
   get _t() {
     const lang = (this._config && this._config.language) ||
@@ -254,6 +275,51 @@ class BatteryForecastCard extends HTMLElement {
     return "";
   }
 
+  _area(id) {
+    const h = this._hass, r = h.entities && h.entities[id];
+    let aid = r && r.area_id;
+    if (!aid && r && r.device_id && h.devices && h.devices[r.device_id]) aid = h.devices[r.device_id].area_id;
+    const a = aid && h.areas && h.areas[aid];
+    return a ? a.name : "";
+  }
+
+  _devEntities(did) {
+    if (!this._devIdx || Date.now() - this._devIdx.at > 600000) {
+      const m = {};
+      for (const [eid, er] of Object.entries(this._hass.entities || {})) {
+        if (er.device_id) (m[er.device_id] = m[er.device_id] || []).push(eid);
+      }
+      this._devIdx = { m, at: Date.now() };
+    }
+    return this._devIdx.m[did] || [];
+  }
+
+  // what kind of device a battery belongs to, guessed from the device's other entities (and its model name)
+  _kind(id) {
+    this._kindCache = this._kindCache || {};
+    const c = this._kindCache[id];
+    if (c && Date.now() - c.at < 600000) return c.v;
+    const h = this._hass, r = h.entities && h.entities[id];
+    const dev = r && r.device_id && h.devices && h.devices[r.device_id];
+    const sib = r && r.device_id ? this._devEntities(r.device_id) : [];
+    const dom = new Set(sib.map((e) => e.split(".")[0]));
+    const dcs = (domain) => new Set(sib.filter((e) => e.startsWith(domain + ".")).map((e) => h.states[e] && h.states[e].attributes.device_class));
+    const bdc = dcs("binary_sensor"), sdc = dcs("sensor");
+    const text = `${(dev && dev.model) || ""} ${(h.states[id] && h.states[id].attributes.friendly_name) || ""}`.toLowerCase();
+    let v;
+    if (dom.has("climate")) v = "thermo";
+    else if (["lock", "vacuum", "cover", "fan", "humidifier", "media_player", "device_tracker", "lawn_mower", "camera"].some((d) => dom.has(d))) v = "devices";
+    else if (["door", "window", "opening", "motion", "occupancy", "presence", "vibration", "garage_door"].some((d) => bdc.has(d))) v = "sensors";
+    else if (sdc.has("temperature") || sdc.has("humidity")) v = "thermo";
+    else if (dom.has("event") || dom.has("button")) v = "remotes";
+    else if (/thermo|temperature|humidity|valve/.test(text)) v = "thermo";
+    else if (/door|window|contact|motion|presence|occupancy|\bpir\b|multipurpose/.test(text)) v = "sensors";
+    else if (/remote|dimmer|switch|button|cube|wheel|scroll|telecomand/.test(text)) v = "remotes";
+    else v = "devices";
+    this._kindCache[id] = { v, at: Date.now() };
+    return v;
+  }
+
   // ---------- statistics ----------
   async _loadStats(ids) {
     if (this._loading) return;
@@ -288,7 +354,7 @@ class BatteryForecastCard extends HTMLElement {
     return this._entities().map(({ id, o, hidden }) => {
       const s = this._hass.states[id];
       const lvl = parseFloat(s.state);
-      const row = { id, hidden, name: this._name(id, o), type: this._type(id, o), level: isFinite(lvl) ? lvl : null };
+      const row = { id, hidden, area: this._area(id), kind: this._kind(id), name: this._name(id, o), type: this._type(id, o), level: isFinite(lvl) ? lvl : null };
       if (row.level === null) {
         row.status = "nodata"; row.label = T.no_data; row.sort = 1e9; return row;
       }
@@ -324,7 +390,7 @@ class BatteryForecastCard extends HTMLElement {
   }
 
   _signature(rows) {
-    return JSON.stringify([this._expanded, this._editing, this._t === BFC_I18N.it, rows.map((r) => [r.id, r.level, r.label, r.type, r.name, r.hidden])]);
+    return JSON.stringify([this._expanded, this._editing, this._t === BFC_I18N.it, rows.map((r) => [r.id, r.level, r.label, r.type, r.name, r.hidden, r.area, r.kind]), this._groupBy]);
   }
 
   _update() {
@@ -355,7 +421,13 @@ class BatteryForecastCard extends HTMLElement {
     if (act === "hide" || act === "restore") {
       const id = el.dataset.id;
       const rest = this._hidden.filter((x) => x !== id);
-      this._saveHidden(act === "hide" ? rest.concat(id) : rest);
+      this._hidden = act === "hide" ? rest.concat(id) : rest;
+      this._persist();
+      return;
+    }
+    if (act === "group") {
+      this._group = el.dataset.mode;
+      this._persist();
       return;
     }
     const e = new Event("hass-more-info", { bubbles: true, composed: true });
@@ -374,7 +446,8 @@ class BatteryForecastCard extends HTMLElement {
     const list = all.filter((r) => !r.hidden);
     const due = list.filter((r) => r.status === "red").length;
     const limit = c.limit && c.limit > 0 ? c.limit : list.length;
-    const shown = this._expanded || edit ? list : list.slice(0, limit);
+    const mode = this._groupBy;
+    const shown = mode !== "none" || this._expanded || edit ? list : list.slice(0, limit);
     const title = c.title === undefined ? T.title : c.title;
     const colors = { red: "#ef5350", orange: "#ffa726", green: "#66bb6a", grey: "#9e9e9e", nodata: "#9e9e9e" };
 
@@ -401,7 +474,33 @@ class BatteryForecastCard extends HTMLElement {
           ${edit ? `<button class="iconbtn eye" data-action="${r.hidden ? "restore" : "hide"}" data-id="${bfcEsc(r.id)}" title="${bfcEsc(r.hidden ? T.restore : T.hide)}" aria-label="${bfcEsc(r.hidden ? T.restore : T.hide)}"><ha-icon icon="${r.hidden ? "mdi:eye-outline" : "mdi:eye-off-outline"}"></ha-icon></button>` : ""}
         </div>`;
     };
-    const rowsHtml = shown.map(rowHtml).join("");
+    let rowsHtml;
+    if (mode === "none") {
+      rowsHtml = `<div class="list">${shown.map(rowHtml).join("")}</div>`;
+    } else {
+      const groups = {};
+      shown.forEach((r) => {
+        const key = mode === "area" ? (r.area || "\u0000") : r.kind;
+        (groups[key] = groups[key] || []).push(r);
+      });
+      const meta = (key) => mode === "area"
+        ? (key === "\u0000" ? { name: T.no_area, icon: "mdi:help-circle-outline" } : { name: key, icon: "mdi:floor-plan" })
+        : { name: T.kinds[key], icon: BFC_KIND_ICONS[key] };
+      // the group with the most urgent battery comes first; "no area" last
+      const keys = Object.keys(groups).sort((a, b) => {
+        if (mode === "area" && (a === "\u0000" || b === "\u0000")) return a === "\u0000" ? 1 : -1;
+        const m = (k) => Math.min(...groups[k].map((r) => r.sort));
+        return m(a) - m(b);
+      });
+      rowsHtml = keys.map((k) => {
+        const g = groups[k], m = meta(k), gdue = g.filter((r) => r.status === "red").length;
+        return `<div class="group"><div class="ghead"><ha-icon icon="${m.icon}"></ha-icon><span class="gname">${bfcEsc(m.name)}</span>` +
+          `${gdue ? `<span class="gdue">${bfcEsc(T.to_replace(gdue))}</span>` : ""}<span class="gcount">${g.length}</span></div>` +
+          `<div class="list">${g.map(rowHtml).join("")}</div></div>`;
+      }).join("");
+    }
+    const chips = `<div class="chips">${["none", "area", "type"].map((m) =>
+      `<button class="chip ${mode === m ? "on" : ""}" data-action="group" data-mode="${m}">${bfcEsc(T["g_" + m])}</button>`).join("")}</div>`;
     const hiddenHtml = edit && hiddenRows.length
       ? `<div class="hidtitle">${bfcEsc(T.hidden(hiddenRows.length))}</div><div class="list">${hiddenRows.map(rowHtml).join("")}</div>` : "";
     const pencil = `<button class="iconbtn pencil ${edit ? "on" : ""}" data-action="edit" title="${bfcEsc(edit ? T.done : T.edit)}" aria-label="${bfcEsc(edit ? T.done : T.edit)}"><ha-icon icon="${edit ? "mdi:check" : "mdi:pencil"}"></ha-icon></button>`;
@@ -418,7 +517,8 @@ class BatteryForecastCard extends HTMLElement {
           ${pencil}
         </div>` : `<div class="tools">${pencil}</div>`}
         ${edit ? `<div class="hint">${bfcEsc(T.edit_hint)}</div>` : ""}
-        ${list.length ? `<div class="list">${rowsHtml}</div>${more}` : `<div class="emptyl">${bfcEsc(T.no_sensors)}</div>`}
+        ${chips}
+        ${list.length ? `${rowsHtml}${more}` : `<div class="emptyl">${bfcEsc(T.no_sensors)}</div>`}
         ${hiddenHtml}
       </ha-card>`;
   }
@@ -445,6 +545,16 @@ BatteryForecastCard.styles = `
   .hint { font-size: 0.82rem; color: var(--secondary-text-color); margin: 0 4px 8px; }
   .hidtitle { font-size: 0.85rem; font-weight: 700; color: var(--secondary-text-color); margin: 14px 4px 4px; }
   .dim { opacity: 0.55; }
+  .chips { display: flex; gap: 6px; margin: 2px 0 10px; flex-wrap: wrap; }
+  .chip { border: none; border-radius: 999px; padding: 6px 14px; font: inherit; font-size: 0.85rem; font-weight: 600; cursor: pointer;
+    background: rgba(127,127,127,0.14); color: var(--secondary-text-color); }
+  .chip.on { background: rgba(102,187,106,0.22); color: var(--primary-text-color); box-shadow: inset 0 0 0 1px rgba(102,187,106,0.6); }
+  .group + .group { margin-top: 14px; }
+  .ghead { display: flex; align-items: center; gap: 8px; margin: 0 4px 4px; padding-bottom: 6px; border-bottom: 1px solid rgba(127,127,127,0.2); }
+  .ghead ha-icon { --mdc-icon-size: 20px; color: var(--secondary-text-color); }
+  .gname { font-weight: 700; color: var(--primary-text-color); }
+  .gdue { font-size: 0.72rem; font-weight: 700; padding: 1px 8px; border-radius: 999px; background: rgba(239,83,80,0.18); color: #ef5350; }
+  .gcount { margin-left: auto; font-size: 0.8rem; color: var(--secondary-text-color); }
   .list { display: grid; grid-gap: 4px; }
   .row { display: flex; align-items: center; padding: 8px 6px; border-radius: 12px; cursor: pointer; }
   .row:hover { background: rgba(127,127,127,0.08); }
