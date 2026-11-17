@@ -22,6 +22,7 @@ A Home Assistant dashboard card that answers one question: **which battery do I 
 - Shows the **battery type** (AAA, CR2032…) when Home Assistant knows it, for example from [Battery Notes](https://github.com/andrew-codechimp/HA-Battery-Notes) or from Matter devices.
 - Colours: **red** = replace within 30 days (or below 20%), **orange** = within 60 days, **green** = fine.
 - Tap a row to open the sensor's details.
+- **Group them your way:** buttons at the top switch between **All**, **By area** and **By type** (home sensors, thermometers & valves, remotes, devices). Inside each group the most urgent battery is first, and every row keeps its days left. Your choice is remembered.
 - **Hide a sensor with one tap:** press the pencil in the header, then the eye on the rows you don't want (a robot vacuum, a toothbrush…). They are listed under *Hidden*, where you can bring them back. The list is saved in Home Assistant for your user, so it works on every device.
 - No dependencies, no helpers or template sensors to create.
 
@@ -86,6 +87,7 @@ entities:
 | `days_history` | `60` | How many days of statistics to read. |
 | `days_window` | `30` | How many of the most recent days are used for the estimate. |
 | `show_unavailable` | `true` | Also list sensors with no value, at the bottom. A silent sensor often means a dead battery. |
+| `group_by` | `none` | Starting view: `none`, `area` or `type`. Each user can change it with the buttons. |
 | `show_type` | `true` | Show the battery type badge. |
 | `language` | from HA | `en` or `it`. |
 
