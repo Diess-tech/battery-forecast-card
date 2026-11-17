@@ -5,7 +5,7 @@
  * https://github.com/Diess-tech/battery-forecast-card
  * MIT License - (c) 2026 Davide Sanna
  */
-const BFC_VERSION = "0.4.2";
+const BFC_VERSION = "0.4.4";
 const BFC_STORE_KEY = "battery-forecast-card";
 
 const BFC_I18N = {
@@ -262,17 +262,18 @@ class BatteryForecastCard extends HTMLElement {
     if (s.attributes.battery_type) return s.attributes.battery_type;
     const r = h.entities && h.entities[id];
     if (!r || !r.device_id) return "";
-    // a sibling entity of the same device that describes the battery type (Battery Notes, Matter...)
+    // sibling entities of the same device that describe the battery type (Battery Notes, Matter...).
+    // Battery Notes wins when there are several: it also knows how many batteries ("2× AAA").
+    let best = "", bestRank = -1;
     for (const [eid, er] of Object.entries(h.entities)) {
       if (er.device_id !== r.device_id || eid === id) continue;
-      if (/battery_type|tipo_batteria|battery_notes/.test(eid)) {
-        const st = h.states[eid];
-        if (st && !["unknown", "unavailable", ""].includes(st.state)) {
-          return st.attributes.battery_type_and_quantity || st.state;
-        }
-      }
+      if (!/battery_type|tipo_batteria|battery_notes/.test(eid)) continue;
+      const st = h.states[eid];
+      if (!st || ["unknown", "unavailable", ""].includes(st.state)) continue;
+      const rank = st.attributes.battery_quantity !== undefined ? 2 : 1;
+      if (rank > bestRank) { best = st.state; bestRank = rank; }
     }
-    return "";
+    return best;
   }
 
   _area(id) {
