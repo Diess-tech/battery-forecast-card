@@ -5,7 +5,7 @@
  * https://github.com/Diess-tech/battery-forecast-card
  * MIT License - (c) 2026 Davide Sanna
  */
-const BFC_VERSION = "0.4.0";
+const BFC_VERSION = "0.4.1";
 const BFC_STORE_KEY = "battery-forecast-card";
 
 const BFC_I18N = {
@@ -144,7 +144,7 @@ class BatteryForecastCard extends HTMLElement {
       caution_days: 60,        // orange within these days
       low_level: 20,           // red anyway below this level
       days_history: 60,
-      exclude_platforms: ["mobile_app", "browser_mod"],
+      exclude_platforms: ["mobile_app", "browser_mod", "battery_notes"],
       exclude: [],
       group_by: "none",        // none | area | type
       show_unavailable: true,
