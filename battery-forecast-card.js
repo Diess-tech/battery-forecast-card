@@ -5,7 +5,8 @@
  * https://github.com/Diess-tech/battery-forecast-card
  * MIT License - (c) 2026 Davide Sanna
  */
-const BFC_VERSION = "0.1.0";
+const BFC_VERSION = "0.2.0";
+const BFC_STORE_KEY = "battery-forecast-card";
 
 const BFC_I18N = {
   en: {
@@ -24,6 +25,12 @@ const BFC_I18N = {
     show_more: (n) => `Show ${n} more`,
     show_less: "Show less",
     left: "left",
+    edit: "Edit",
+    done: "Done",
+    hide: "Hide this sensor",
+    restore: "Show this sensor again",
+    hidden: (n) => `Hidden (${n})`,
+    edit_hint: "Tap the eye to hide a sensor, for example a rechargeable device.",
   },
   it: {
     title: "Batterie",
@@ -41,6 +48,12 @@ const BFC_I18N = {
     show_more: (n) => `Mostra altre ${n}`,
     show_less: "Mostra meno",
     left: "rimasti",
+    edit: "Modifica",
+    done: "Fatto",
+    hide: "Nascondi questo sensore",
+    restore: "Mostra di nuovo questo sensore",
+    hidden: (n) => `Nascosti (${n})`,
+    edit_hint: "Tocca l'occhio per nascondere un sensore, per esempio un dispositivo ricaricabile.",
   },
 };
 
@@ -99,6 +112,9 @@ class BatteryForecastCard extends HTMLElement {
     this._statsAt = 0;
     this._loading = false;
     this._expanded = false;
+    this._editing = false;
+    this._hidden = [];        // sensors hidden from the card (saved in the HA user's data)
+    this._hiddenLoaded = false;
     this._sig = null;
     this.shadowRoot.addEventListener("click", (ev) => this._onClick(ev));
   }
@@ -124,8 +140,36 @@ class BatteryForecastCard extends HTMLElement {
   }
 
   set hass(hass) {
+    const first = !this._hass;
     this._hass = hass;
+    if (first) this._loadHidden();
     this._update();
+  }
+
+  // ---------- hidden sensors (stored in Home Assistant, per user) ----------
+  async _loadHidden() {
+    let list = null;
+    try {
+      const res = await this._hass.callWS({ type: "frontend/get_user_data", key: BFC_STORE_KEY });
+      if (res && res.value && Array.isArray(res.value.hidden)) list = res.value.hidden;
+    } catch (e) {
+      try { list = JSON.parse(localStorage.getItem(BFC_STORE_KEY) || "null"); } catch (e2) { /* ignore */ }
+    }
+    this._hidden = Array.isArray(list) ? list : [];
+    this._hiddenLoaded = true;
+    this._sig = null;
+    this._update();
+  }
+
+  async _saveHidden(list) {
+    this._hidden = list;
+    this._sig = null;
+    this._update();
+    try {
+      await this._hass.callWS({ type: "frontend/set_user_data", key: BFC_STORE_KEY, value: { hidden: list } });
+    } catch (e) {
+      try { localStorage.setItem(BFC_STORE_KEY, JSON.stringify(list)); } catch (e2) { /* ignore */ }
+    }
   }
 
   get _t() {
@@ -166,7 +210,7 @@ class BatteryForecastCard extends HTMLElement {
     return ids
       .filter((id) => !excl.some((re) => re.test(id)))
       .filter((id) => h.states[id])
-      .map((id) => ({ id, o: overrides[id] || {} }));
+      .map((id) => ({ id, o: overrides[id] || {}, hidden: this._hidden.includes(id) }));
   }
 
   _name(id, o) {
@@ -241,10 +285,10 @@ class BatteryForecastCard extends HTMLElement {
   // ---------- model ----------
   _rows() {
     const c = this._config, T = this._t;
-    return this._entities().map(({ id, o }) => {
+    return this._entities().map(({ id, o, hidden }) => {
       const s = this._hass.states[id];
       const lvl = parseFloat(s.state);
-      const row = { id, name: this._name(id, o), type: this._type(id, o), level: isFinite(lvl) ? lvl : null };
+      const row = { id, hidden, name: this._name(id, o), type: this._type(id, o), level: isFinite(lvl) ? lvl : null };
       if (row.level === null) {
         row.status = "nodata"; row.label = T.no_data; row.sort = 1e9; return row;
       }
@@ -280,7 +324,7 @@ class BatteryForecastCard extends HTMLElement {
   }
 
   _signature(rows) {
-    return JSON.stringify([this._expanded, this._t === BFC_I18N.it, rows.map((r) => [r.id, r.level, r.label, r.type, r.name])]);
+    return JSON.stringify([this._expanded, this._editing, this._t === BFC_I18N.it, rows.map((r) => [r.id, r.level, r.label, r.type, r.name, r.hidden])]);
   }
 
   _update() {
@@ -301,10 +345,17 @@ class BatteryForecastCard extends HTMLElement {
   _onClick(ev) {
     const el = ev.composedPath().find((n) => n.dataset && (n.dataset.entity || n.dataset.action));
     if (!el) return;
-    if (el.dataset.action === "toggle") {
-      this._expanded = !this._expanded;
+    const act = el.dataset.action;
+    if (act === "toggle" || act === "edit") {
+      if (act === "toggle") this._expanded = !this._expanded; else this._editing = !this._editing;
       this._sig = null;
       this._update();
+      return;
+    }
+    if (act === "hide" || act === "restore") {
+      const id = el.dataset.id;
+      const rest = this._hidden.filter((x) => x !== id);
+      this._saveHidden(act === "hide" ? rest.concat(id) : rest);
       return;
     }
     const e = new Event("hass-more-info", { bubbles: true, composed: true });
@@ -315,23 +366,26 @@ class BatteryForecastCard extends HTMLElement {
   // ---------- render ----------
   _render(rows) {
     const c = this._config, T = this._t;
-    let list = rows.slice();
-    if (!c.show_unavailable) list = list.filter((r) => r.status !== "nodata");
-    list.sort((a, b) => a.sort - b.sort);
+    const edit = this._editing;
+    let all = rows.slice();
+    if (!c.show_unavailable) all = all.filter((r) => r.status !== "nodata");
+    all.sort((a, b) => a.sort - b.sort);
+    const hiddenRows = all.filter((r) => r.hidden);
+    const list = all.filter((r) => !r.hidden);
     const due = list.filter((r) => r.status === "red").length;
     const limit = c.limit && c.limit > 0 ? c.limit : list.length;
-    const shown = this._expanded ? list : list.slice(0, limit);
+    const shown = this._expanded || edit ? list : list.slice(0, limit);
     const title = c.title === undefined ? T.title : c.title;
     const colors = { red: "#ef5350", orange: "#ffa726", green: "#66bb6a", grey: "#9e9e9e", nodata: "#9e9e9e" };
 
-    const rowsHtml = shown.map((r) => {
+    const rowHtml = (r) => {
       const col = colors[r.status];
       const lvl = r.level == null ? 0 : Math.max(0, Math.min(100, r.level));
       const icon = r.level == null ? "mdi:battery-unknown"
         : r.level <= 5 ? "mdi:battery-outline"
         : `mdi:battery-${Math.min(90, Math.max(10, Math.round(r.level / 10) * 10))}`.replace("battery-100", "battery");
       return `
-        <div class="row" data-entity="${bfcEsc(r.id)}">
+        <div class="row ${r.hidden ? "dim" : ""}" ${edit ? "" : `data-entity="${bfcEsc(r.id)}"`}>
           <ha-icon icon="${r.level != null && r.level >= 95 ? "mdi:battery" : icon}" style="color:${col}"></ha-icon>
           <div class="info">
             <div class="top">
@@ -344,10 +398,15 @@ class BatteryForecastCard extends HTMLElement {
             <div class="days" style="color:${r.status === "green" || r.status === "grey" ? "var(--primary-text-color)" : col}">${bfcEsc(r.label)}</div>
             <div class="lvl">${r.level == null ? "—" : Math.round(r.level) + "%"}</div>
           </div>
+          ${edit ? `<button class="iconbtn eye" data-action="${r.hidden ? "restore" : "hide"}" data-id="${bfcEsc(r.id)}" title="${bfcEsc(r.hidden ? T.restore : T.hide)}" aria-label="${bfcEsc(r.hidden ? T.restore : T.hide)}"><ha-icon icon="${r.hidden ? "mdi:eye-outline" : "mdi:eye-off-outline"}"></ha-icon></button>` : ""}
         </div>`;
-    }).join("");
+    };
+    const rowsHtml = shown.map(rowHtml).join("");
+    const hiddenHtml = edit && hiddenRows.length
+      ? `<div class="hidtitle">${bfcEsc(T.hidden(hiddenRows.length))}</div><div class="list">${hiddenRows.map(rowHtml).join("")}</div>` : "";
+    const pencil = `<button class="iconbtn pencil ${edit ? "on" : ""}" data-action="edit" title="${bfcEsc(edit ? T.done : T.edit)}" aria-label="${bfcEsc(edit ? T.done : T.edit)}"><ha-icon icon="${edit ? "mdi:check" : "mdi:pencil"}"></ha-icon></button>`;
 
-    const more = list.length > limit
+    const more = !edit && list.length > limit
       ? `<button class="more" data-action="toggle">${bfcEsc(this._expanded ? T.show_less : T.show_more(list.length - limit))}</button>` : "";
 
     this.shadowRoot.innerHTML = `
@@ -355,9 +414,12 @@ class BatteryForecastCard extends HTMLElement {
       <ha-card>
         ${title ? `<div class="head">
           <ha-icon class="hicon ${due ? "alert" : ""}" icon="${due ? "mdi:battery-alert-variant-outline" : "mdi:battery-heart-variant"}"></ha-icon>
-          <div><div class="htitle">${bfcEsc(title)}</div><div class="hsub">${bfcEsc(T.due(due, c.warning_days))}</div></div>
-        </div>` : ""}
+          <div class="grow"><div class="htitle">${bfcEsc(title)}</div><div class="hsub">${bfcEsc(T.due(due, c.warning_days))}</div></div>
+          ${pencil}
+        </div>` : `<div class="tools">${pencil}</div>`}
+        ${edit ? `<div class="hint">${bfcEsc(T.edit_hint)}</div>` : ""}
         ${list.length ? `<div class="list">${rowsHtml}</div>${more}` : `<div class="emptyl">${bfcEsc(T.no_sensors)}</div>`}
+        ${hiddenHtml}
       </ha-card>`;
   }
 }
@@ -372,6 +434,17 @@ BatteryForecastCard.styles = `
   .hicon.alert { color: #ef5350; background: rgba(239,83,80,0.15); }
   .htitle { font-size: 1.15rem; font-weight: 700; color: var(--primary-text-color); }
   .hsub { font-size: 0.85rem; color: var(--secondary-text-color); }
+  .grow { flex: 1; min-width: 0; }
+  .tools { display: flex; justify-content: flex-end; margin-bottom: 4px; }
+  .iconbtn { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0;
+    border: none; border-radius: 50%; background: transparent; color: var(--secondary-text-color); cursor: pointer; }
+  .iconbtn:hover { background: rgba(127,127,127,0.15); }
+  .iconbtn ha-icon { --mdc-icon-size: 22px; }
+  .pencil.on { background: rgba(102,187,106,0.2); color: #66bb6a; }
+  .eye { margin-left: 4px; }
+  .hint { font-size: 0.82rem; color: var(--secondary-text-color); margin: 0 4px 8px; }
+  .hidtitle { font-size: 0.85rem; font-weight: 700; color: var(--secondary-text-color); margin: 14px 4px 4px; }
+  .dim { opacity: 0.55; }
   .list { display: grid; grid-gap: 4px; }
   .row { display: flex; align-items: center; padding: 8px 6px; border-radius: 12px; cursor: pointer; }
   .row:hover { background: rgba(127,127,127,0.08); }
