@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Battery Forecast Card">
+  <rect width="512" height="512" rx="112" fill="#2b2b2b"/>
+  <rect x="84" y="166" width="304" height="180" rx="38" fill="#66bb6a"/>
+  <rect x="396" y="226" width="40" height="60" rx="14" fill="#66bb6a"/>
+  <rect x="116" y="198" width="240" height="116" rx="16" fill="#2b2b2b"/>
+  <rect x="132" y="214" width="86" height="84" rx="8" fill="#66bb6a"/>
+</svg>

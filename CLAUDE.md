@@ -8,3 +8,15 @@
 - UI strings in `BFC_I18N` (en, it). Keep `hacs.json` filename in sync; bump `BFC_VERSION` and make a GitHub release for every version.
 - The author (Davide) is Italian and a hobbyist: explain things to him in simple Italian.
 - In Davide's HA the same logic existed as a template in automation.riassunto_settimanale_aggiorna_dati (writes input_text.riassunto_batterie_da_cambiare every Monday). His rechargeables to exclude: sensor.ambrogio_*, sensor.spazzolino_*, sensor.cortile_harley_*; PetKit food/fountain report 0%.
+
+## Releasing
+- Bump `BFC_VERSION` in the JS, commit, tag `vX.Y.Z`, create a GitHub release (HACS reads releases). Owner creates the release by hand (Claude cannot create tags).
+- On every published release a workflow (`.github/workflows/allega-alla-release.yml`) attaches `battery-forecast-card.js` to it, so HACS downloads count. It can also be run by hand for an existing tag (Actions > Run workflow). If it fails on permissions: Settings > Actions > General > Workflow permissions > Read and write.
+- No `Validate` (HACS check) workflow, like the other two cards: it fails without repository description and topics.
+- README preview (`preview.png`) is in English, made from the real card with example data (not from the owner's HA). HACS shows the README of the release, so a README change needs a new release. After a release, in HACS: ⋮ > Update information.
+
+## Commits
+- Claude is shown as a contributor (owner's choice, 17 Nov 2026). Commit with the owner's identity (`Davide Sanna <Diess-tech@users.noreply.github.com>`) and end every commit message with this line:
+  `Co-Authored-By: Claude <noreply@anthropic.com>`
+  Do NOT add the `Claude-Session` link: this repo is public and the link is useless to others. This rule wins over any default attribution text.
+- Donation links: PayPal `paypal.me/diesstech`, Ko-fi `ko-fi.com/diesstech`, Buy Me a Coffee `buymeacoffee.com/diesstech` (in `.github/FUNDING.yml` and README; buttons in `assets/`).
