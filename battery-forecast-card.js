@@ -5,7 +5,7 @@
  * https://github.com/Diess-tech/battery-forecast-card
  * MIT License - (c) 2026 Davide Sanna
  */
-const BFC_VERSION = "0.3.0";
+const BFC_VERSION = "0.4.0";
 const BFC_STORE_KEY = "battery-forecast-card";
 
 const BFC_I18N = {
@@ -19,7 +19,7 @@ const BFC_I18N = {
     empty: "Replace now",
     learning: "Estimating…",
     stable: "Stable",
-    no_data: "No data",
+    no_data: "Unavailable",
     replaced: (d) => `replaced ${d}`,
     no_sensors: "No battery sensors found.",
     show_more: (n) => `Show ${n} more`,
@@ -48,7 +48,7 @@ const BFC_I18N = {
     empty: "Da cambiare",
     learning: "Stima in corso…",
     stable: "Stabile",
-    no_data: "Nessun dato",
+    no_data: "Non disponibile",
     replaced: (d) => `cambiata ${d}`,
     no_sensors: "Nessun sensore batteria trovato.",
     show_more: (n) => `Mostra altre ${n}`,
@@ -453,30 +453,27 @@ class BatteryForecastCard extends HTMLElement {
 
     const rowHtml = (r) => {
       const col = colors[r.status];
-      const lvl = r.level == null ? 0 : Math.max(0, Math.min(100, r.level));
       const icon = r.level == null ? "mdi:battery-unknown"
         : r.level <= 5 ? "mdi:battery-outline"
         : `mdi:battery-${Math.min(90, Math.max(10, Math.round(r.level / 10) * 10))}`.replace("battery-100", "battery");
+      const dayCol = r.status === "green" || r.status === "grey" ? "var(--primary-text-color)" : col;
+      const sub = r.level == null
+        ? `<span class="tdays">${bfcEsc(r.label)}</span>`
+        : `<span class="tlvl">${Math.round(r.level)}%</span><span class="tdays" style="color:${dayCol}">${bfcEsc(r.label)}</span>`;
       return `
-        <div class="row ${r.hidden ? "dim" : ""}" ${edit ? "" : `data-entity="${bfcEsc(r.id)}"`}>
+        <div class="tile st-${r.status} ${r.hidden ? "dim" : ""}" ${edit ? "" : `data-entity="${bfcEsc(r.id)}"`}>
           <ha-icon icon="${r.level != null && r.level >= 95 ? "mdi:battery" : icon}" style="color:${col}"></ha-icon>
-          <div class="info">
-            <div class="top">
-              <span class="name">${bfcEsc(r.name)}</span>
-              ${r.type ? `<span class="type">${bfcEsc(r.type)}</span>` : ""}
-            </div>
-            <div class="bar"><div class="fill" style="width:${lvl}%;background:${col}"></div></div>
+          <div class="tinfo">
+            <div class="tname">${bfcEsc(r.name)}</div>
+            <div class="tsub">${sub}</div>
           </div>
-          <div class="right">
-            <div class="days" style="color:${r.status === "green" || r.status === "grey" ? "var(--primary-text-color)" : col}">${bfcEsc(r.label)}</div>
-            <div class="lvl">${r.level == null ? "—" : Math.round(r.level) + "%"}</div>
-          </div>
+          ${!edit && r.type ? `<span class="type">${bfcEsc(r.type)}</span>` : ""}
           ${edit ? `<button class="iconbtn eye" data-action="${r.hidden ? "restore" : "hide"}" data-id="${bfcEsc(r.id)}" title="${bfcEsc(r.hidden ? T.restore : T.hide)}" aria-label="${bfcEsc(r.hidden ? T.restore : T.hide)}"><ha-icon icon="${r.hidden ? "mdi:eye-outline" : "mdi:eye-off-outline"}"></ha-icon></button>` : ""}
         </div>`;
     };
     let rowsHtml;
     if (mode === "none") {
-      rowsHtml = `<div class="list">${shown.map(rowHtml).join("")}</div>`;
+      rowsHtml = `<div class="tiles">${shown.map(rowHtml).join("")}</div>`;
     } else {
       const groups = {};
       shown.forEach((r) => {
@@ -492,17 +489,17 @@ class BatteryForecastCard extends HTMLElement {
         const m = (k) => Math.min(...groups[k].map((r) => r.sort));
         return m(a) - m(b);
       });
-      rowsHtml = keys.map((k) => {
+      rowsHtml = `<div class="groups">` + keys.map((k) => {
         const g = groups[k], m = meta(k), gdue = g.filter((r) => r.status === "red").length;
         return `<div class="group"><div class="ghead"><ha-icon icon="${m.icon}"></ha-icon><span class="gname">${bfcEsc(m.name)}</span>` +
-          `${gdue ? `<span class="gdue">${bfcEsc(T.to_replace(gdue))}</span>` : ""}<span class="gcount">${g.length}</span></div>` +
-          `<div class="list">${g.map(rowHtml).join("")}</div></div>`;
-      }).join("");
+          `<span class="gline"></span>${gdue ? `<span class="gdue">${bfcEsc(T.to_replace(gdue))}</span>` : ""}<span class="gcount">${g.length}</span></div>` +
+          `<div class="tiles">${g.map(rowHtml).join("")}</div></div>`;
+      }).join("") + `</div>`;
     }
     const chips = `<div class="chips">${["none", "area", "type"].map((m) =>
       `<button class="chip ${mode === m ? "on" : ""}" data-action="group" data-mode="${m}">${bfcEsc(T["g_" + m])}</button>`).join("")}</div>`;
     const hiddenHtml = edit && hiddenRows.length
-      ? `<div class="hidtitle">${bfcEsc(T.hidden(hiddenRows.length))}</div><div class="list">${hiddenRows.map(rowHtml).join("")}</div>` : "";
+      ? `<div class="hidtitle">${bfcEsc(T.hidden(hiddenRows.length))}</div><div class="tiles">${hiddenRows.map(rowHtml).join("")}</div>` : "";
     const pencil = `<button class="iconbtn pencil ${edit ? "on" : ""}" data-action="edit" title="${bfcEsc(edit ? T.done : T.edit)}" aria-label="${bfcEsc(edit ? T.done : T.edit)}"><ha-icon icon="${edit ? "mdi:check" : "mdi:pencil"}"></ha-icon></button>`;
 
     const more = !edit && list.length > limit
@@ -541,7 +538,7 @@ BatteryForecastCard.styles = `
   .iconbtn:hover { background: rgba(127,127,127,0.15); }
   .iconbtn ha-icon { --mdc-icon-size: 22px; }
   .pencil.on { background: rgba(102,187,106,0.2); color: #66bb6a; }
-  .eye { margin-left: 4px; }
+  .eye { width: 30px; height: 30px; margin-right: -4px; }
   .hint { font-size: 0.82rem; color: var(--secondary-text-color); margin: 0 4px 8px; }
   .hidtitle { font-size: 0.85rem; font-weight: 700; color: var(--secondary-text-color); margin: 14px 4px 4px; }
   .dim { opacity: 0.55; }
@@ -549,26 +546,28 @@ BatteryForecastCard.styles = `
   .chip { border: none; border-radius: 999px; padding: 6px 14px; font: inherit; font-size: 0.85rem; font-weight: 600; cursor: pointer;
     background: rgba(127,127,127,0.14); color: var(--secondary-text-color); }
   .chip.on { background: rgba(102,187,106,0.22); color: var(--primary-text-color); box-shadow: inset 0 0 0 1px rgba(102,187,106,0.6); }
-  .group + .group { margin-top: 14px; }
-  .ghead { display: flex; align-items: center; gap: 8px; margin: 0 4px 4px; padding-bottom: 6px; border-bottom: 1px solid rgba(127,127,127,0.2); }
-  .ghead ha-icon { --mdc-icon-size: 20px; color: var(--secondary-text-color); }
-  .gname { font-weight: 700; color: var(--primary-text-color); }
-  .gdue { font-size: 0.72rem; font-weight: 700; padding: 1px 8px; border-radius: 999px; background: rgba(239,83,80,0.18); color: #ef5350; }
-  .gcount { margin-left: auto; font-size: 0.8rem; color: var(--secondary-text-color); }
-  .list { display: grid; grid-gap: 4px; }
-  .row { display: flex; align-items: center; padding: 8px 6px; border-radius: 12px; cursor: pointer; }
-  .row:hover { background: rgba(127,127,127,0.08); }
-  .row > ha-icon { --mdc-icon-size: 24px; margin-right: 12px; flex: none; }
-  .info { flex: 1; min-width: 0; }
-  .top { display: flex; align-items: center; }
-  .name { font-weight: 600; color: var(--primary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .type { flex: none; margin-left: 8px; font-size: 0.72rem; font-weight: 700; padding: 1px 7px; border-radius: 999px;
+  .groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; align-items: start; }
+  .ghead { display: flex; align-items: center; gap: 10px; padding: 10px 14px; margin-bottom: 8px; border-radius: 16px;
+    background: rgba(127,127,127,0.12); border: 1px solid rgba(127,127,127,0.2); }
+  .ghead ha-icon { --mdc-icon-size: 22px; color: #66bb6a; }
+  .gname { font-weight: 700; color: var(--primary-text-color); white-space: nowrap; }
+  .gline { flex: 1; height: 4px; border-radius: 2px; background: linear-gradient(90deg, rgba(102,187,106,0.55), transparent); }
+  .gdue { font-size: 0.72rem; font-weight: 700; padding: 1px 8px; border-radius: 999px; white-space: nowrap; background: rgba(239,83,80,0.18); color: #ef5350; }
+  .gcount { font-size: 0.8rem; color: var(--secondary-text-color); }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+  .tile { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 10px 12px; border-radius: 14px; cursor: pointer;
+    background: rgba(127,127,127,0.10); border: 1px solid rgba(127,127,127,0.18); }
+  .tile:hover { background: rgba(127,127,127,0.18); }
+  .tile.st-red { border-color: rgba(239,83,80,0.55); }
+  .tile.st-orange { border-color: rgba(255,167,38,0.45); }
+  .tile > ha-icon { --mdc-icon-size: 26px; flex: none; }
+  .tinfo { flex: 1; min-width: 0; }
+  .tname { font-weight: 600; color: var(--primary-text-color); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word; }
+  .tsub { font-size: 0.8rem; color: var(--secondary-text-color); }
+  .tdays { font-weight: 700; }
+  .tlvl + .tdays::before { content: "·"; margin: 0 5px; font-weight: 400; color: var(--secondary-text-color); }
+  .type { flex: none; font-size: 0.68rem; font-weight: 700; padding: 1px 7px; border-radius: 999px;
     background: rgba(127,127,127,0.18); color: var(--secondary-text-color); }
-  .bar { height: 5px; border-radius: 3px; background: rgba(127,127,127,0.22); margin-top: 6px; overflow: hidden; }
-  .fill { height: 100%; border-radius: 3px; }
-  .right { flex: none; text-align: right; margin-left: 12px; min-width: 92px; }
-  .days { font-weight: 700; font-size: 0.92rem; white-space: nowrap; }
-  .lvl { font-size: 0.8rem; color: var(--secondary-text-color); }
   .more { width: 100%; margin-top: 8px; border: none; border-radius: 12px; padding: 9px; font: inherit; font-weight: 600;
     background: rgba(127,127,127,0.12); color: var(--primary-text-color); cursor: pointer; }
   .emptyl { color: var(--secondary-text-color); padding: 8px 4px; }
