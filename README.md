@@ -1,5 +1,16 @@
 # Battery Forecast Card
 
+<p align="center"><img src="https://raw.githubusercontent.com/Diess-tech/battery-forecast-card/main/assets/logo.png" alt="Battery Forecast Card logo" width="128" height="128"></p>
+
+[![hacs](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Diess-tech&repository=battery-forecast-card&category=plugin)
+[![release](https://img.shields.io/github/v/release/Diess-tech/battery-forecast-card)](https://github.com/Diess-tech/battery-forecast-card/releases)
+[![downloads](https://img.shields.io/github/downloads/Diess-tech/battery-forecast-card/total)](https://github.com/Diess-tech/battery-forecast-card/releases)
+[![license](https://img.shields.io/github/license/Diess-tech/battery-forecast-card)](LICENSE)
+
+<a href="https://buymeacoffee.com/diesstech"><img src="https://raw.githubusercontent.com/Diess-tech/battery-forecast-card/main/assets/donate-buymeacoffee.svg" alt="Buy me a coffee" width="240" height="50"></a>
+<a href="https://ko-fi.com/diesstech"><img src="https://raw.githubusercontent.com/Diess-tech/battery-forecast-card/main/assets/donate-kofi.svg" alt="Support me on Ko-fi" width="240" height="50"></a>
+<a href="https://paypal.me/diesstech"><img src="https://raw.githubusercontent.com/Diess-tech/battery-forecast-card/main/assets/donate-paypal.svg" alt="Donate with PayPal" width="240" height="50"></a>
+
 A Home Assistant dashboard card that answers one question: **which battery do I need to replace next, and when?**
 
 ![preview](preview.png)
@@ -16,6 +27,11 @@ A Home Assistant dashboard card that answers one question: **which battery do I 
 ## Installation
 
 ### HACS (custom repository)
+
+[![Open your Home Assistant instance and open this repository in HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Diess-tech&repository=battery-forecast-card&category=plugin)
+
+Click the button above, or do it by hand:
+
 1. Open HACS → ⋮ → **Custom repositories**.
 2. Add `https://github.com/Diess-tech/battery-forecast-card` with category **Dashboard**.
 3. Install **Battery Forecast Card**, then reload the browser.
