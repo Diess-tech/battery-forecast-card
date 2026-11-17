@@ -77,7 +77,7 @@ entities:
 | `entities` | auto | Your own list of sensors: strings or objects with `entity`, `name`, `type`. Without it, every `sensor` with `device_class: battery` and unit `%` is used. |
 | `exclude` | `[]` | Entity IDs to leave out. `*` works as a wildcard. |
 | `include` | `[]` | Extra entities to add to the automatic list. |
-| `exclude_platforms` | `[mobile_app, browser_mod]` | Integrations whose battery sensors are skipped. These are usually phones and tablets you recharge. |
+| `exclude_platforms` | `[mobile_app, browser_mod, battery_notes]` | Integrations whose battery sensors are skipped: phones and tablets you recharge, and the duplicate "Battery+" sensors made by Battery Notes. |
 | `title` | "Batteries" | Card title. Set it to `""` to hide the header. |
 | `limit` | `10` | Rows shown before **Show more**. Set it to `0` to show all. |
 | `threshold` | `5` | The level, in %, at which a battery counts as empty. |
